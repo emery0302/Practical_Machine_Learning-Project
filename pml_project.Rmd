@@ -1,0 +1,124 @@
+---
+title: "Practical Machine Learning- Project"
+author: "Emery"
+date: '2023-07-17'
+output: html_document
+---
+
+# Loading packages
+```{r setup, include=FALSE}
+library(readr)
+library(lattice)
+library(ggplot2)
+library(caret)
+library(kernlab)
+library(rattle)
+library(corrplot)
+library(randomForest)
+set.seed(123)
+```
+
+# loading and exploring data
+
+```{r}
+pml_training <- read_csv("pml-training.csv")
+head(pml_training)
+str(pml_training)
+
+pml_testing <- read_csv("pml-testing.csv")
+head(pml_testing)
+str(pml_testing)
+```
+
+# Preprocessing: remove columns with too many NAs
+```{r}
+na_columns <- colSums(is.na(pml_training)) > 0.8 * nrow(pml_training)
+train_data <- pml_training[, !na_columns]
+test_data <- pml_testing[, names(pml_testing) %in% names(train_data)]
+dim(train_data)
+```
+
+# removing varibales which are irrelevant to the outcome (classe)
+```{r}
+train_data <- train_data[,-c(1:7)]
+dim(train_data)
+```
+
+# Split the training data into a training set and a validation set
+```{r}
+set.seed(123)
+trainIndex <- createDataPartition(train_data$classe, p = .7, list = FALSE)
+train_set <- train_data[trainIndex, ]
+validation_set <- train_data[-trainIndex, ]
+validation_set$classe <- as.factor(validation_set$classe)
+```
+
+# models creating
+```{r}
+control <- trainControl(method="cv", number=3, verboseIter=F)
+```
+
+# Train a random forest model
+```{r}
+set.seed(123)
+mdl_rf <- train(classe~., data=train_set, method="rf", trControl = control, tuneLength = 5)
+
+pred_rf <- predict(mdl_rf, validation_set)
+cmrf <- confusionMatrix(pred_rf, factor(validation_set$classe))
+cmrf
+```
+
+# Train a Decision Tree model
+```{r}
+mdl_dt <- train(classe ~ ., data=train_set, method="rpart", trControl=control, tuneLength = 5)
+print(mdl_dt)
+
+# Predict on the validation set and calculate accuracy
+predictions_dt <- predict(mdl_dt, newdata=validation_set)
+confusionMatrix(predictions_dt, validation_set$classe)
+
+```
+
+# Train a Gradient Boosted Trees model
+```{r}
+set.seed(123)
+mdl_gbm <- train(classe ~ ., data=train_set, method="gbm", trControl=control, verbose=FALSE)
+print(mdl_gbm)
+
+# Predict on the validation set and calculate accuracy
+predictions_gbm <- predict(mdl_gbm, newdata=validation_set)
+confusionMatrix(predictions_gbm, validation_set$classe)
+```
+
+# Train a SVM model
+```{r}
+set.seed(123)
+mdl_svm <- train(classe ~ ., data=train_set, method="svmRadial", trControl=control)
+print(mdl_svm)
+
+# Predict on the validation set and calculate accuracy
+predictions_svm <- predict(mdl_svm, newdata=validation_set)
+confusionMatrix(predictions_svm, validation_set$classe)
+```
+
+# Compare models
+```{r}
+models <- list(decision_tree = mdl_dt, random_forest = mdl_rf, gradient_boosted = mdl_gbm, svm = mdl_svm)
+
+results <- resamples(models)
+
+# Summary of results
+summary(results)
+
+# Box-and-whisker plot of results
+bwplot(results)
+
+```
+The box-plot shows that random forest model provides the highest accuracy, so we would use it to predict the "classe" for the testing data set.
+
+# using the test data set to predict the outcome (classe) by the best model according to the result of model comparison
+```{r}
+pred <- predict(mdl_rf, test_data)
+print(pred)
+```
+
